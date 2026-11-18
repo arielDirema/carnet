@@ -1,0 +1,80 @@
+# Crée une release GitHub avec l'APK chaque fois qu'une PR est fusionnée dans main.
+name: Release APK
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch: # lancement manuel depuis l'onglet Actions
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-apk
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Clé de signature
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          mkdir -p ~/.android
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+          else
+            echo "::warning::Secret ANDROID_KEYSTORE_BASE64 absent : l'APK sera signé avec une clé temporaire et ne pourra pas mettre à jour une version déjà installée."
+          fi
+
+      - name: Numéro de version
+        id: ver
+        run: |
+          CODE=$((100 + GITHUB_RUN_NUMBER))
+          NAME="1.0.${GITHUB_RUN_NUMBER}"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Compiler l'APK
+        run: |
+          npx cap sync android
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon -PversionCode=${{ steps.ver.outputs.code }} -PversionName=${{ steps.ver.outputs.name }}
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/Carnet-${{ steps.ver.outputs.name }}.apk"
+
+      - name: Publier la release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.name }}
+          name: Carnet ${{ steps.ver.outputs.name }}
+          target_commitish: main
+          make_latest: true
+          body: |
+            ${{ github.event.pull_request.title && format('PR #{0} : {1}', github.event.pull_request.number, github.event.pull_request.title) || 'Version compilée manuellement' }}
+
+            Téléchargez `Carnet-${{ steps.ver.outputs.name }}.apk` ci-dessous et ouvrez-le sur la tablette pour l'installer ou le mettre à jour.
+          files: Carnet-${{ steps.ver.outputs.name }}.apk

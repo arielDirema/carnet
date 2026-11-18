@@ -43,7 +43,7 @@ jobs:
         run: |
           mkdir -p ~/.android
           if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+            printf '%s' "$KEYSTORE_B64" | tr -cd 'A-Za-z0-9+/=' | base64 -d > ~/.android/debug.keystore
           else
             echo "::warning::Secret ANDROID_KEYSTORE_BASE64 absent : l'APK sera signé avec une clé temporaire et ne pourra pas mettre à jour une version déjà installée."
           fi

@@ -17,7 +17,22 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Clé fournie par la CI (variable CARNET_KEYSTORE) pour signer toujours avec la même clé
+    def ciKeystore = System.getenv("CARNET_KEYSTORE")
+    signingConfigs {
+        if (ciKeystore) {
+            ci {
+                storeFile file(ciKeystore)
+                storePassword "android"
+                keyAlias "androiddebugkey"
+                keyPassword "android"
+            }
+        }
+    }
     buildTypes {
+        debug {
+            if (ciKeystore) signingConfig signingConfigs.ci
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

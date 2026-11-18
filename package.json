@@ -1,0 +1,20 @@
+{
+  "name": "carnet",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Prise de notes et dessin au stylet",
+  "scripts": {
+    "sync": "cap sync android",
+    "apk": "cap sync android && cd android && .\\gradlew.bat assembleDebug && copy /Y app\\build\\outputs\\apk\\debug\\app-debug.apk ..\\Carnet.apk"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.2",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.6.2",
+    "@capacitor/filesystem": "8.1.5",
+    "@capacitor/share": "8.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.2"
+  }
+}

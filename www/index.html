@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Carnet</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Accueil -->
+<div id="home" class="screen home">
+  <aside class="side">
+    <div class="side-brand"><img src="icons/icon.svg" alt="" class="logo">Carnet</div>
+    <nav class="side-nav" id="side-nav">
+      <button class="nav-item active" data-view="all"><span data-icon="books"></span><span class="nav-lbl">Tous les carnets</span><span class="count" id="count-all"></span></button>
+      <button class="nav-item" data-view="fav"><span data-icon="star"></span><span class="nav-lbl">Favoris</span><span class="count" id="count-fav"></span></button>
+    </nav>
+    <div class="side-foot">
+      <button class="nav-item" data-open="settings"><span data-icon="sliders"></span><span class="nav-lbl">Réglages</span></button>
+    </div>
+  </aside>
+  <div class="home-main">
+    <header class="home-head">
+      <div class="home-title-wrap">
+        <h1 id="home-title">Tous les carnets</h1>
+        <div class="home-sub" id="home-sub"></div>
+      </div>
+      <label class="search">
+        <span data-icon="search"></span>
+        <input id="search" type="search" placeholder="Rechercher" autocomplete="off">
+      </label>
+      <button class="icon-btn narrow-only" data-open="settings" data-icon="sliders" title="Réglages"></button>
+      <button class="btn primary" id="btn-new"><span data-icon="plus"></span><span class="btn-lbl">Nouveau carnet</span></button>
+    </header>
+    <div class="seg narrow-only home-seg" id="home-seg">
+      <button data-view="all" class="active">Tous</button><button data-view="fav">Favoris</button>
+    </div>
+    <main id="grid" class="grid"></main>
+  </div>
+</div>
+
+<!-- Éditeur -->
+<div id="editor" class="screen" hidden>
+  <header class="bar toolbar">
+    <div class="tb-left">
+      <button class="icon-btn" id="btn-back" data-icon="back" title="Retour"></button>
+      <button class="icon-btn" id="btn-pages" data-icon="pages" title="Pages"></button>
+      <button class="title-btn" id="note-title" title="Renommer"></button>
+    </div>
+    <div class="tb-center">
+      <div class="tools" id="tools">
+        <button class="tool" data-tool="pen" title="Stylo (P)"><span data-icon="pen"></span><i class="ind"></i></button>
+        <button class="tool" data-tool="hl" title="Surligneur (H)"><span data-icon="highlighter"></span><i class="ind"></i></button>
+        <button class="tool" data-tool="eraser" title="Gomme (E)"><span data-icon="eraser"></span></button>
+        <button class="tool" data-tool="shape" title="Formes (S)"><span data-icon="shapes"></span></button>
+        <button class="tool" data-tool="text" title="Texte (T)"><span data-icon="text"></span></button>
+        <button class="tool" data-tool="lasso" title="Sélection (L)"><span data-icon="lasso"></span></button>
+      </div>
+    </div>
+    <div class="tb-right">
+      <button class="icon-btn" id="btn-undo" data-icon="undo" title="Annuler (Ctrl+Z)"></button>
+      <button class="icon-btn" id="btn-redo" data-icon="redo" title="Rétablir (Ctrl+Y)"></button>
+      <span class="vsep"></span>
+      <button class="icon-btn" id="btn-insert" data-icon="insert" title="Insérer (I)"></button>
+      <button class="icon-btn" id="btn-paper" data-icon="paper" title="Papier"></button>
+      <button class="icon-btn" id="btn-more" data-icon="more" title="Plus"></button>
+    </div>
+  </header>
+  <div id="stage">
+    <canvas id="cv-main"></canvas>
+    <canvas id="cv-over"></canvas>
+    <div id="subbar" class="floating subbar"></div>
+    <aside id="pages-panel" class="pages-panel" hidden>
+      <div class="pp-head"><span>Pages</span><button class="icon-btn sm" id="pp-add" data-icon="plus" title="Ajouter une page"></button></div>
+      <div class="pp-list" id="pp-list"></div>
+    </aside>
+    <div id="sel-bar" class="floating sel-bar" hidden>
+      <button data-sel="dup"><span data-icon="copy"></span>Dupliquer</button>
+      <button data-sel="del" class="danger"><span data-icon="trash"></span>Supprimer</button>
+    </div>
+    <div class="floating pager">
+      <button id="btn-zoom" class="pager-txt" title="Ajuster à la largeur"></button>
+      <span class="pager-sep"></span>
+      <span id="page-info" class="pager-txt"></span>
+      <button id="btn-addpage" class="icon-btn sm" data-icon="plus" title="Ajouter une page"></button>
+    </div>
+  </div>
+</div>
+
+<div id="pop" class="popover" hidden></div>
+<div id="modal" class="modal" hidden><div class="dialog" id="dialog" role="dialog"></div></div>
+<div id="toast" class="toast" hidden></div>
+<input type="file" id="file-import" accept="application/json,.json" hidden>
+
+<script src="app.js"></script>
+</body>
+</html>

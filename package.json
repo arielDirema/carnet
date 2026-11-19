@@ -5,7 +5,7 @@
   "description": "Prise de notes et dessin au stylet",
   "scripts": {
     "sync": "cap sync android",
-    "apk": "cap sync android && cd android && .\\gradlew.bat assembleDebug && copy /Y app\\build\\outputs\\apk\\debug\\app-debug.apk ..\\Carnet.apk"
+    "apk": "cap sync android && cd android && .\\gradlew.bat assembleRelease && copy /Y app\\build\\outputs\\apk\\release\\app-release.apk ..\\Carnet.apk"
   },
   "dependencies": {
     "@capacitor/android": "8.6.2",

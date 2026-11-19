@@ -1886,11 +1886,11 @@ async function exportPNG(i) {
 }
 
 function objSVG(o, dark) {
-  const f = v => Math.round(v * 100) / 100;
-  if (o.type === 'image') return `<image href="${o.src}" x="${f(o.x)}" y="${f(o.y)}" width="${f(o.w)}" height="${f(o.h)}" preserveAspectRatio="none"/>\n`;
+  const f = v => Math.round((+v || 0) * 100) / 100;
+  if (o.type === 'image') return RE_IMG.test(o.src) ? `<image href="${o.src}" x="${f(o.x)}" y="${f(o.y)}" width="${f(o.w)}" height="${f(o.h)}" preserveAspectRatio="none"/>\n` : '';
   if (o.type === 'text') {
     const lh = o.fs * LH;
-    return `<text font-family="${esc(FONT)}" font-size="${o.fs}" font-weight="${o.bold ? 650 : 400}" fill="${o.color}" dominant-baseline="central" xml:space="preserve">`
+    return `<text font-family="${esc(FONT)}" font-size="${f(o.fs)}" font-weight="${o.bold ? 650 : 400}" fill="${safeColor(o.color)}" dominant-baseline="central" xml:space="preserve">`
       + layoutText(o).lines.map((l, i) => `<tspan x="${f(o.x)}" y="${f(o.y + lh * (i + 0.5))}">${esc(l)}</tspan>`).join('') + '</text>\n';
   }
   const k = chipColors(dark), h = o.h, title = o.type === 'link' ? linkTitle(o) : (o.name || 'Son'), sub = o.type === 'link' ? linkSub(o) : fmtDur(o.dur);
@@ -1898,7 +1898,7 @@ function objSVG(o, dark) {
     + `<circle cx="${f(o.x + h / 2)}" cy="${f(o.y + h / 2)}" r="${f(h * 0.31)}" fill="${k.ac}"/>`
     + `<text x="${f(o.x + h + 2)}" y="${f(o.y + h * 0.45)}" font-family="${esc(FONT)}" font-size="15" font-weight="600" fill="${o.type === 'link' ? k.ac : k.tx}">${esc(title)}</text>`
     + `<text x="${f(o.x + h + 2)}" y="${f(o.y + h * 0.77)}" font-family="${esc(FONT)}" font-size="13" fill="${k.mu}">${esc(sub)}</text>`;
-  if (o.type === 'link') s = `<a href="${esc(o.url)}">${s}</a>`;
+  if (o.type === 'link' && normUrl(o.url)) s = `<a href="${esc(normUrl(o.url))}">${s}</a>`;
   return s + '\n';
 }
 async function exportSVG(i) {
@@ -1910,16 +1910,17 @@ async function exportSVG(i) {
   for (const s of strokesOn(i)) {
     const P = s.pts, n = P.length / 3;
     const op = s.tool === 'hl' ? ` stroke-opacity="${HL_ALPHA}"` : '';
+    const color = safeColor(s.color);
     let avgW = s.w;
     if (s.pr) { let t = 0; for (let k = 2; k < P.length; k += 3) t += widthAt(s, P[k]); avgW = t / n; }
-    if (n === 1) { out += `<circle cx="${f(P[0])}" cy="${f(P[1])}" r="${f(avgW / 2)}" fill="${s.color}"${op.replace('stroke-', 'fill-')}/>\n`; continue; }
+    if (n === 1) { out += `<circle cx="${f(P[0])}" cy="${f(P[1])}" r="${f(avgW / 2)}" fill="${color}"${op.replace('stroke-', 'fill-')}/>\n`; continue; }
     let d = `M${f(P[0])} ${f(P[1])}`;
     if (s.sm === 0 || n < 3) for (let k = 1; k < n; k++) d += `L${f(P[k * 3])} ${f(P[k * 3 + 1])}`;
     else {
       for (let k = 1; k < n - 1; k++) d += `Q${f(P[k * 3])} ${f(P[k * 3 + 1])} ${f((P[k * 3] + P[k * 3 + 3]) / 2)} ${f((P[k * 3 + 1] + P[k * 3 + 4]) / 2)}`;
       d += `L${f(P[(n - 1) * 3])} ${f(P[(n - 1) * 3 + 1])}`;
     }
-    out += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${f(avgW)}" stroke-linecap="round" stroke-linejoin="round"${op}/>\n`;
+    out += `<path d="${d}" fill="none" stroke="${color}" stroke-width="${f(avgW)}" stroke-linecap="round" stroke-linejoin="round"${op}/>\n`;
   }
   out += '</svg>';
   downloadBlob(new Blob([out], { type: 'image/svg+xml' }), `${fileBase()} - page ${i + 1}.svg`);
@@ -2065,11 +2066,12 @@ let allNotes = [], homeView = 'all';
 function coverHTML(n, extraClass = '') {
   const land = n.orientation === 'landscape' ? ' landscape' : '';
   const fav = n.fav ? `<span class="fav">${icon('star')}</span>` : '';
-  if (!n.cover || n.cover === 'page') {
+  const cover = safeCover(n.cover), thumb = safeThumb(n.thumb);
+  if (cover === 'page') {
     const pc = paperColor(n.paper || {});
-    return `<div class="cover page${land} ${extraClass}" style="--pbg:${pc.bg}">${n.thumb ? `<img src="${n.thumb}" alt="">` : ''}${fav}</div>`;
+    return `<div class="cover page${land} ${extraClass}" style="--pbg:${pc.bg}">${thumb ? `<img src="${thumb}" alt="">` : ''}${fav}</div>`;
   }
-  return `<div class="cover${land} ${extraClass}" style="--c:${n.cover}"><span class="spine"></span><span class="band"></span>
+  return `<div class="cover${land} ${extraClass}" style="--c:${cover}"><span class="spine"></span><span class="band"></span>
     <span class="plate">${esc(n.title)}</span>${fav}</div>`;
 }
 
@@ -2090,7 +2092,7 @@ function renderGrid() {
   $('#home-title').textContent = homeView === 'fav' ? 'Favoris' : 'Tous les carnets';
   let list = homeView === 'fav' ? favs : allNotes;
   $('#home-sub').textContent = list.length ? `${list.length} carnet${list.length > 1 ? 's' : ''}` : '';
-  if (q) list = list.filter(n => n.title.toLowerCase().includes(q));
+  if (q) list = list.filter(n => String(n.title || '').toLowerCase().includes(q));
   const grid = $('#grid');
   if (homeView === 'fav' && !favs.length) {
     grid.innerHTML = `<div class="empty"><strong>Aucun favori</strong>Ajoutez un carnet aux favoris depuis son menu « ⋯ ».</div>`;
@@ -2099,11 +2101,11 @@ function renderGrid() {
   if (q && !list.length) { grid.innerHTML = `<div class="empty">Aucun résultat pour « ${esc(q)} »</div>`; return; }
   const newCard = homeView === 'all' && !q
     ? `<div class="card new-card" data-act="new"><div class="cover"><span class="plus">${icon('plus')}</span>Nouveau carnet</div></div>` : '';
-  grid.innerHTML = newCard + list.map(n => `<div class="card" data-id="${n.id}">
+  grid.innerHTML = newCard + list.map(n => `<div class="card" data-id="${esc(n.id)}">
       ${coverHTML(n)}
       <div class="card-foot">
         <div class="card-text"><div class="card-title">${esc(n.title)}</div>
-        <div class="card-date">${fmtDate(n.updated)}${n.pageCount > 1 ? ` · ${n.pageCount} p.` : ''}</div></div>
+        <div class="card-date">${esc(fmtDate(n.updated))}${n.pageCount > 1 ? ` · ${Math.round(+n.pageCount) || 1} p.` : ''}</div></div>
         <button class="icon-btn sm" data-act="menu" title="Options">${icon('more')}</button>
       </div></div>`).join('');
 }
@@ -2261,16 +2263,100 @@ async function exportAll() {
   const blob = new Blob([JSON.stringify({ app: 'carnet', version: 1, exported: Date.now(), notes })], { type: 'application/json' });
   await downloadBlob(blob, `carnet-sauvegarde-${new Date().toISOString().slice(0, 10)}.json`);
 }
+// ---------- Validation des sauvegardes importées
+// Tout ce qui vient d'un fichier est considéré comme hostile : on ne garde que des valeurs
+// de type et de forme connus, le reste est corrigé ou ignoré.
+const RE_COLOR = /^#[0-9a-f]{3,8}$/i;
+const RE_ID = /^[a-z0-9_-]{1,40}$/i;
+const RE_THUMB = /^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i;
+const RE_IMG = /^data:image\/(png|jpeg|webp|gif);base64,[a-z0-9+/=]+$/i;
+const RE_AUDIO = /^data:audio\/[a-z0-9.+-]+(;[a-z0-9=.+-]+)*;base64,[a-z0-9+/=]+$/i;
+const isNum = v => typeof v === 'number' && isFinite(v);
+const num = (v, a, b, d) => isNum(v) ? clamp(v, a, b) : d;
+const str = (v, max) => typeof v === 'string' ? v.slice(0, max) : '';
+const safeColor = (c, d = '#1f2328') => typeof c === 'string' && RE_COLOR.test(c) ? c : d;
+const safeCover = c => c === 'page' || (typeof c === 'string' && RE_COLOR.test(c)) ? c : 'page';
+const safeThumb = t => typeof t === 'string' && RE_THUMB.test(t) ? t : null;
+
+function sanitizeNote(n) {
+  if (!n || typeof n !== 'object' || !n.meta || typeof n.meta !== 'object') return null;
+  const m = n.meta;
+  if (typeof m.id !== 'string' || !RE_ID.test(m.id)) return null;
+  const pageCount = Math.round(num(m.pageCount, 1, 2000, 1));
+  const paper = m.paper && typeof m.paper === 'object' ? m.paper : {};
+  const meta = {
+    id: m.id,
+    title: str(m.title, 120).trim() || 'Sans titre',
+    cover: safeCover(m.cover),
+    fav: m.fav === true,
+    created: num(m.created, 0, 9e15, Date.now()),
+    updated: num(m.updated, 0, 9e15, Date.now()),
+    paper: {
+      style: PAPERS.some(p => p.id === paper.style) ? paper.style : 'blank',
+      color: PAPER_COLORS.some(p => p.id === paper.color) ? paper.color : 'white',
+    },
+    orientation: m.orientation === 'landscape' ? 'landscape' : 'portrait',
+    pageCount,
+    thumb: safeThumb(m.thumb),
+  };
+  const page = p => Number.isInteger(p) && p >= 0 && p < pageCount;
+  const strokes = [];
+  for (const s of Array.isArray(n.strokes) ? n.strokes : []) {
+    if (!s || typeof s !== 'object' || !page(s.page) || !Array.isArray(s.pts)) continue;
+    const pts = s.pts;
+    if (!pts.length || pts.length % 3 || pts.length > 600000 || !pts.every(isNum)) continue;
+    const st = {
+      id: typeof s.id === 'string' && RE_ID.test(s.id) ? s.id : uid(),
+      page: s.page, tool: s.tool === 'hl' ? 'hl' : 'pen',
+      color: safeColor(s.color), w: num(s.w, 0.1, 100, 2),
+      pts: pts.slice(), pr: s.pr === true, sm: s.sm === 0 ? 0 : 1,
+    };
+    st.bb = computeBB(st.pts, st.pr ? st.w * 1.7 : st.w); // jamais repris du fichier
+    strokes.push(st);
+  }
+  const objs = [];
+  for (const o of Array.isArray(n.objs) ? n.objs : []) {
+    if (!o || typeof o !== 'object' || !page(o.page)) continue;
+    const base = {
+      id: typeof o.id === 'string' && RE_ID.test(o.id) ? o.id : uid(), page: o.page, type: o.type,
+      x: num(o.x, -2000, 4000, 20), y: num(o.y, -2000, 4000, 20),
+      w: num(o.w, 10, 5000, 200), h: num(o.h, 10, 5000, CHIP_H),
+    };
+    if (o.type === 'text') {
+      const t = { ...base, text: str(o.text, 20000), color: safeColor(o.color), fs: num(o.fs, 6, 200, 22), bold: o.bold === true };
+      if (!t.text.trim()) continue;
+      t.h = layoutText(t).h; objs.push(t);
+    } else if (o.type === 'image') {
+      if (typeof o.src === 'string' && RE_IMG.test(o.src)) objs.push({ ...base, src: o.src });
+    } else if (o.type === 'audio') {
+      if (typeof o.src === 'string' && RE_AUDIO.test(o.src)) objs.push({ ...base, h: CHIP_H, src: o.src, name: str(o.name, 200), dur: num(o.dur, 0, 86400, 0) });
+    } else if (o.type === 'link') {
+      const url = normUrl(o.url);
+      if (url) objs.push({ ...base, h: CHIP_H, url, label: str(o.label, 120) });
+    }
+  }
+  return { meta, strokes, objs };
+}
+
 $('#file-import').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
+  let data;
   try {
-    const data = JSON.parse(await f.text());
-    if (data.app !== 'carnet' || !Array.isArray(data.notes)) throw new Error('format');
-    for (const n of data.notes) await db.save(n.meta, { id: n.meta.id, strokes: n.strokes || [], objs: n.objs || [] });
-    toast(`${data.notes.length} note(s) importée(s)`);
-    hideDialog(); showHome();
-  } catch { toast('Fichier de sauvegarde invalide'); }
+    data = JSON.parse(await f.text());
+    if (!data || data.app !== 'carnet' || !Array.isArray(data.notes)) throw new Error('format');
+  } catch { toast('Fichier de sauvegarde invalide'); return; }
+  let ok = 0, bad = 0;
+  for (const raw of data.notes) {
+    const n = sanitizeNote(raw);
+    if (!n) { bad++; continue; }
+    // ne jamais écraser un carnet existant : un doublon reçoit un nouvel identifiant
+    if (await db.getMeta(n.meta.id)) { n.meta.id = uid(); n.meta.title = (n.meta.title + ' (importé)').slice(0, 120); }
+    try { await db.save(n.meta, { id: n.meta.id, strokes: n.strokes, objs: n.objs }); ok++; }
+    catch { bad++; }
+  }
+  toast(bad ? `${ok} carnet(s) importé(s), ${bad} ignoré(s)` : `${ok} carnet(s) importé(s)`);
+  hideDialog(); showHome();
 });
 
 // ============================================================ Dialogues & toast

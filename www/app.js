@@ -50,6 +50,8 @@ const I = {
   camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
   play: '<path d="M8 5v14l11-7z"/>',
   open: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v6H4V6h6"/>',
+  refresh: '<path d="M20 11a8 8 0 0 0-14.6-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.6 4.5L20 16"/><path d="M20 20v-4h-4"/>',
+  palette: '<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8Z"/><circle cx="7.5" cy="11.5" r="1.1"/><circle cx="10" cy="7.3" r="1.1"/><circle cx="14.6" cy="7.3" r="1.1"/>',
   bold: '<path d="M7 4h6a4 4 0 0 1 0 8H7z"/><path d="M7 12h7a4 4 0 0 1 0 8H7z"/>',
 };
 const icon = n => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${I[n] || ''}</svg>`;
@@ -82,8 +84,18 @@ const PAPER_COLORS = [
   { id: 'gray', name: 'Gris', bg: '#eff0f2', line: 'rgba(40,50,70,0.15)', strong: 'rgba(40,50,70,0.30)', margin: 'rgba(200,80,80,0.40)' },
   { id: 'dark', name: 'Ardoise', bg: '#25272c', line: 'rgba(255,255,255,0.09)', strong: 'rgba(255,255,255,0.19)', margin: 'rgba(240,120,120,0.40)', dark: true },
 ];
-const PEN_COLORS = ['#1f2328', '#5b6270', '#a3a8b0', '#ffffff', '#2f5bd3', '#0e7490', '#1f8a5b', '#b45309', '#c2410c', '#c9302c', '#be185d', '#7c3aed'];
-const HL_COLORS = ['#fcd34d', '#86efac', '#93c5fd', '#f9a8d4', '#fdba74', '#c4b5fd'];
+// Palette du stylo : 5 rangées de 6 (neutres, bleus, verts et jaunes, orangés et rouges, roses, violets et bruns)
+const PEN_COLORS = [
+  '#000000', '#1f2328', '#4b5563', '#8a919c', '#c4c8ce', '#ffffff',
+  '#1e3a8a', '#2f5bd3', '#3b82f6', '#0ea5e9', '#0e7490', '#14b8a6',
+  '#14532d', '#1f8a5b', '#22c55e', '#84cc16', '#eab308', '#facc15',
+  '#b45309', '#c2410c', '#f97316', '#c9302c', '#ef4444', '#9f1239',
+  '#be185d', '#ec4899', '#a855f7', '#7c3aed', '#4c1d95', '#78350f',
+];
+const HL_COLORS = [
+  '#fde047', '#fcd34d', '#fdba74', '#fca5a5', '#f9a8d4', '#f0abfc',
+  '#c4b5fd', '#93c5fd', '#7dd3fc', '#5eead4', '#86efac', '#d9f99d',
+];
 const SHAPES = [
   { id: 'line', name: 'Ligne' }, { id: 'arrow', name: 'Flèche' },
   { id: 'rect', name: 'Rectangle' }, { id: 'ellipse', name: 'Ellipse' },
@@ -93,6 +105,7 @@ const FONT = '-apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-s
 const TEXT_SIZES = [16, 22, 32];
 const LH = 1.35;      // interligne du texte
 const CHIP_H = 56;    // hauteur des pastilles son / lien
+const PREVIEW_H = 112; // hauteur d'une carte de lien avec aperçu
 const COVERS = ['#2f3a4a', '#3f6b5a', '#a4553f', '#c79a3b', '#5a4e7c', '#4a7a9c', '#8a8f98', '#1f2328', '#d9cbb3', 'page'];
 
 // ============================================================ Réglages
@@ -113,6 +126,7 @@ const settings = Object.assign({
   shape: 'line',
   eraserR: 16,
   text: { color: '#1f2328', fs: 22, bold: false },
+  recentColors: [],         // couleurs personnalisées utilisées récemment
 }, (() => { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; } })());
 function saveSettings() { try { localStorage.setItem(LS_KEY, JSON.stringify(settings)); } catch {} }
 
@@ -414,8 +428,9 @@ function imgEl(src) {
 }
 function getImg(src) { const im = imgEl(src); return im.complete && im.naturalWidth ? im : null; }
 function loadImages() {
-  return Promise.all(ed.objs.filter(o => o.type === 'image').map(o => {
-    const im = imgEl(o.src);
+  const srcs = ed.objs.map(o => o.type === 'image' ? o.src : o.type === 'link' && o.pv && o.pv.img).filter(Boolean);
+  return Promise.all(srcs.map(src => {
+    const im = imgEl(src);
     return im.complete ? null : (im.decode ? im.decode().catch(() => {}) : new Promise(r => { im.addEventListener('load', r); im.addEventListener('error', r); }));
   }));
 }
@@ -434,8 +449,51 @@ function ellipsize(c, t, maxW) {
   while (t.length > 1 && c.measureText(t + '…').width > maxW) t = t.slice(0, -1);
   return t + '…';
 }
-const linkTitle = o => o.label || (() => { try { return new URL(o.url).hostname.replace(/^www\./, ''); } catch { return o.url; } })();
+const linkHost = o => { try { return new URL(o.url).hostname.replace(/^www\./, ''); } catch { return o.url; } };
+const linkTitle = o => o.label || (o.pv && o.pv.title) || linkHost(o);
 const linkSub = o => o.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+// texte coupé en n lignes au plus, la dernière terminée par « … » si besoin
+function clampLines(c, text, maxW, n) {
+  const lines = wrapText(c, String(text).replace(/\s+/g, ' ').trim(), maxW).filter(l => l.trim());
+  if (lines.length <= n) return lines;
+  const out = lines.slice(0, n);
+  out[n - 1] = ellipsize(c, out[n - 1] + ' ' + lines[n], maxW);
+  return out;
+}
+const pendingPreviews = new Set(); // liens dont l'aperçu est en cours de chargement
+const pvImg = src => src ? getImg(src) : null;
+
+// carte de lien avec aperçu : vignette à gauche, site, titre et description
+function drawLinkCard(c, o, x, y, dark) {
+  const k = chipColors(dark), pv = o.pv, h = o.h, r = 12;
+  rrect(c, x, y, o.w, h, r); c.fillStyle = k.bg; c.fill();
+  let tx = x + 14;
+  const im = pvImg(pv.img);
+  if (pv.img) {
+    c.save(); rrect(c, x, y, o.w, h, r); c.clip();
+    if (im) {
+      // recadrage « cover » dans un carré h × h
+      const s = Math.max(h / im.naturalWidth, h / im.naturalHeight), iw = im.naturalWidth * s, ih = im.naturalHeight * s;
+      c.beginPath(); c.rect(x, y, h, h); c.clip();
+      c.drawImage(im, x + (h - iw) / 2, y + (h - ih) / 2, iw, ih);
+    } else { c.fillStyle = k.bd; c.fillRect(x, y, h, h); }
+    c.restore();
+    tx = x + h + 14;
+  }
+  rrect(c, x, y, o.w, h, r); c.lineWidth = 1; c.strokeStyle = k.bd; c.stroke();
+  const tw = x + o.w - 14 - tx;
+  c.textBaseline = 'alphabetic';
+  c.font = `12px ${FONT}`; c.fillStyle = k.mu;
+  c.fillText(ellipsize(c, pv.site || linkHost(o), tw), tx, y + 24);
+  c.font = `600 15px ${FONT}`; c.fillStyle = k.ac;
+  const tl = clampLines(c, linkTitle(o), tw, pv.desc ? 2 : 3);
+  tl.forEach((l, i) => c.fillText(l, tx, y + 46 + i * 19));
+  if (pv.desc && tl.length < 3) {
+    c.font = `13px ${FONT}`; c.fillStyle = k.mu;
+    const dl = clampLines(c, pv.desc, tw, 3 - tl.length);
+    dl.forEach((l, i) => c.fillText(l, tx, y + 46 + (tl.length + i) * 19));
+  }
+}
 
 // st (facultatif) : état de lecture { playing, t } pour un son
 function drawObj(c, o, dx = 0, dy = 0, dark = false, st = null) {
@@ -453,6 +511,7 @@ function drawObj(c, o, dx = 0, dy = 0, dark = false, st = null) {
     c.textBaseline = 'alphabetic';
     return;
   }
+  if (o.type === 'link' && o.pv) { drawLinkCard(c, o, x, y, dark); return; }
   // pastille son / lien
   const k = chipColors(dark), h = o.h;
   rrect(c, x, y, o.w, h, 12); c.fillStyle = k.bg; c.fill();
@@ -470,7 +529,7 @@ function drawObj(c, o, dx = 0, dy = 0, dark = false, st = null) {
     c.lineWidth = 2; c.lineCap = 'round'; c.lineJoin = 'round';
     c.beginPath(); c.moveTo(cx - 5, cy + 5); c.lineTo(cx + 5, cy - 5);
     c.moveTo(cx - 1.5, cy - 5); c.lineTo(cx + 5, cy - 5); c.lineTo(cx + 5, cy + 1.5); c.stroke();
-    title = linkTitle(o); sub = linkSub(o);
+    title = linkTitle(o); sub = pendingPreviews.has(o.id) ? 'Chargement de l’aperçu…' : linkSub(o);
   }
   const tx = x + h + 2, tw = o.w - h - 14;
   c.textBaseline = 'alphabetic';
@@ -1024,7 +1083,7 @@ function resizedObj(o, w) {
     const r = { ...o, w: r2(clamp(w, 60, pw * 1.5)) };
     r.h = layoutText(r).h; return r;
   }
-  return { ...o, w: r2(clamp(w, 170, 640)) };
+  return { ...o, w: r2(clamp(w, o.pv ? 260 : 170, 640)) };
 }
 
 function eraseAt(wp) {
@@ -1176,7 +1235,8 @@ function renderSelBar() {
     const o = sel.objs[0];
     if (o.type === 'text') h += btn('edit', 'edit', 'Modifier');
     else if (o.type === 'audio') h += btn('play', 'play', 'Écouter');
-    else if (o.type === 'link') h += btn('open', 'open', 'Ouvrir') + btn('editlink', 'edit', 'Modifier');
+    else if (o.type === 'link') h += btn('open', 'open', 'Ouvrir') + btn('editlink', 'edit', 'Modifier')
+      + (canPreview() && /^https?:/i.test(o.url) ? btn('preview', 'refresh', 'Aperçu') : '');
   }
   $('#sel-bar').innerHTML = h + btn('dup', 'copy', 'Dupliquer') + btn('del', 'trash', 'Supprimer', 'danger');
 }
@@ -1202,9 +1262,11 @@ $('#sel-bar').addEventListener('click', async e => {
   else if (k === 'editlink') {
     const v = await linkDialog(o); if (!v) return;
     const n = { ...o, ...v };
+    if (v.url !== o.url) { delete n.pv; n.h = CHIP_H; }
     pushHistory(); ed.objs = ed.objs.map(x => x.id === o.id ? n : x);
     bump(); invalidate(sel.page); markDirty(); setSelection(sel.page, [], [n]); requestRender();
-  }
+    if (v.url !== o.url || !o.pv) loadPreview(n);
+  } else if (k === 'preview') loadPreview(o, true);
 });
 function recolorSelection(color) {
   const sel = ed.sel;
@@ -1490,7 +1552,92 @@ async function insertLink() {
   const v = await linkDialog(null);
   if (!v) return;
   const w = 300, sp = insertSpot(w, CHIP_H);
-  addObj({ id: uid(), type: 'link', ...sp, w, h: CHIP_H, url: v.url, label: v.label });
+  const o = { id: uid(), type: 'link', ...sp, w, h: CHIP_H, url: v.url, label: v.label };
+  addObj(o);
+  loadPreview(o);
+}
+
+// ---------- Aperçu des liens
+// La page est récupérée une seule fois, à l'insertion, par le module HTTP natif de l'appli Android
+// (le navigateur l'interdirait). Titre, description et vignette sont enregistrés dans la note :
+// rien n'est rechargé ensuite, la note reste lisible hors ligne.
+const canPreview = () => NATIVE && !!plugin('CapacitorHttp');
+const UA = 'Mozilla/5.0 (Linux; Android 10; Tablet) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+const cleanTxt = (s, max) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, max);
+const headerOf = (h, name) => { for (const k in h || {}) if (k.toLowerCase() === name) return String(h[k]); return ''; };
+
+async function fetchPreview(url) {
+  const http = plugin('CapacitorHttp');
+  const r = await http.request({ url, method: 'GET', responseType: 'text', connectTimeout: 8000, readTimeout: 10000,
+    headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'fr,en;q=0.8' } });
+  if (!r || r.status >= 400 || typeof r.data !== 'string') return null;
+  if (!/html|xml/i.test(headerOf(r.headers, 'content-type') || 'text/html')) return null;
+  // DOMParser : document inerte, ni script exécuté ni ressource chargée
+  const doc = new DOMParser().parseFromString(r.data.slice(0, 800000), 'text/html');
+  const meta = (...names) => {
+    for (const n of names) {
+      for (const el of doc.querySelectorAll('meta')) {
+        const key = (el.getAttribute('property') || el.getAttribute('name') || '').toLowerCase();
+        const v = el.getAttribute('content');
+        if (key === n && v && v.trim()) return v.trim();
+      }
+    }
+    return '';
+  };
+  const base = r.url || url;
+  const pv = {
+    title: cleanTxt(meta('og:title', 'twitter:title') || (doc.querySelector('title') || {}).textContent, 200),
+    desc: cleanTxt(meta('og:description', 'twitter:description', 'description'), 300),
+    site: cleanTxt(meta('og:site_name'), 80),
+    img: null,
+  };
+  let imgUrl = meta('og:image:secure_url', 'og:image', 'og:image:url', 'twitter:image', 'twitter:image:src');
+  if (imgUrl) {
+    try { imgUrl = new URL(imgUrl, base).href; } catch { imgUrl = ''; }
+    if (/^https?:/i.test(imgUrl)) pv.img = await fetchThumb(imgUrl).catch(() => null);
+  }
+  if (!pv.title && !pv.desc && !pv.img) return null;
+  return pv;
+}
+
+// télécharge l'image d'aperçu et la ré-encode (taille réduite, format sûr)
+async function fetchThumb(url) {
+  const http = plugin('CapacitorHttp');
+  const r = await http.request({ url, method: 'GET', responseType: 'blob', connectTimeout: 8000, readTimeout: 10000, headers: { 'User-Agent': UA } });
+  if (!r || r.status >= 400 || typeof r.data !== 'string' || r.data.length > 8e6) return null;
+  const type = (headerOf(r.headers, 'content-type').split(';')[0] || '').trim().toLowerCase();
+  if (!/^image\/(png|jpeg|jpg|webp|gif)$/.test(type)) return null;
+  const b64 = r.data.replace(/[^A-Za-z0-9+/=]/g, '');
+  const im = new Image();
+  im.src = `data:${type === 'image/jpg' ? 'image/jpeg' : type};base64,${b64}`;
+  await im.decode();
+  const S = 240, k = Math.min(1, S / Math.min(im.naturalWidth, im.naturalHeight));
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(1, Math.round(im.naturalWidth * k)); cv.height = Math.max(1, Math.round(im.naturalHeight * k));
+  const c = cv.getContext('2d');
+  c.fillStyle = '#ffffff'; c.fillRect(0, 0, cv.width, cv.height);
+  c.drawImage(im, 0, 0, cv.width, cv.height);
+  return cv.toDataURL('image/jpeg', 0.82);
+}
+
+async function loadPreview(o, manual = false) {
+  if (!canPreview()) { if (manual) toast('Aperçu disponible seulement dans l’appli Android'); return; }
+  if (!/^https?:/i.test(o.url) || pendingPreviews.has(o.id)) return;
+  pendingPreviews.add(o.id); invalidate(o.page); requestRender();
+  let pv = null;
+  try { pv = await fetchPreview(o.url); } catch (err) { console.warn('aperçu', err); }
+  pendingPreviews.delete(o.id);
+  const cur = ed.note && ed.objs.find(x => x.id === o.id);
+  if (!cur) return; // supprimé ou carnet fermé entre-temps
+  if (!pv) {
+    invalidate(cur.page); requestRender();
+    if (manual) toast('Aperçu introuvable pour ce lien');
+    return;
+  }
+  const n = { ...cur, pv, h: PREVIEW_H, w: Math.max(cur.w, 380) };
+  ed.objs = ed.objs.map(x => x === cur ? n : x);
+  if (ed.sel && ed.sel.ids.has(n.id)) setSelection(ed.sel.page, ed.sel.items, ed.sel.objs.map(x => x.id === n.id ? n : x));
+  bump(); invalidate(n.page); markDirty(); requestRender();
 }
 
 function buildInsertPop(p) {
@@ -1540,7 +1687,8 @@ const sizeDot = (w, fam) => clamp(fam === 'hl' ? w * 0.55 : w * 1.9 + 2, 4, 20);
 function renderSubbar() {
   const sb = $('#subbar'), t = ed.tool;
   const colors = (fam, cur) => settings[fam + 'Slots'].map((c, i) =>
-    `<button class="sb-color${c === cur ? ' active' : ''}" data-slot="${i}" title="Touchez à nouveau pour changer la couleur"><span style="background:${c}"></span></button>`).join('');
+    `<button class="sb-color${c === cur ? ' active' : ''}" data-slot="${i}" title="Touchez à nouveau pour changer la couleur"><span style="background:${c}"></span></button>`).join('')
+    + `<button class="sb-pal" data-pal="${fam}" title="Plus de couleurs">${icon('palette')}</button>`;
   const sizes = fam => settings[fam + 'Sizes'].map((w, i) => {
     const d = sizeDot(w, fam);
     return `<button class="sb-size${Math.abs(w - settings[fam].w) < 0.01 ? ' active' : ''}" data-size="${i}" title="Touchez à nouveau pour régler"><i style="width:${d}px;height:${d}px"></i></button>`;
@@ -1588,6 +1736,16 @@ $('#subbar').addEventListener('click', e => {
     if (Math.abs(settings[fam].w - w) < 0.01) { openPop(sz, p => buildSizePop(p, fam, i)); return; }
     settings[fam].w = w; saveSettings(); updateToolbar(); return;
   }
+  const pal = e.target.closest('[data-pal]');
+  if (pal) {
+    const f = pal.dataset.pal;
+    if (ed.sel) { openPop(pal, p => buildColorPop(p, 'pen', -1, 'recolor')); return; }
+    const cur = ed.tool === 'text' ? curText().color : settings[f].color;
+    let i = settings[f + 'Slots'].indexOf(cur);
+    if (i < 0) i = settings[f + 'Slots'].length - 1;
+    openPop(pal, p => buildColorPop(p, f, i));
+    return;
+  }
   const fs = e.target.closest('[data-fs]');
   if (fs) { applyTextStyle({ fs: +fs.dataset.fs }); return; }
   if (e.target.closest('[data-bold]')) { applyTextStyle({ bold: !curText().bold }); return; }
@@ -1619,6 +1777,7 @@ let popAnchor = null;
 function openPop(anchor, build) {
   if (popAnchor === anchor && !pop.hidden) { closePop(); return; }
   const fresh = pop.cloneNode(false); // nouvel élément = pas d'anciens écouteurs
+  fresh.removeAttribute('style');    // ni l'ancienne largeur
   pop.replaceWith(fresh); pop = fresh;
   pop.hidden = false;
   popAnchor = anchor;
@@ -1642,23 +1801,76 @@ document.addEventListener('pointerdown', e => {
 }, true);
 addEventListener('resize', placePop);
 
-function buildColorPop(p, fam, slot) {
+// ---------- Couleurs : conversions hex <-> TSL pour le réglage personnalisé
+function hexToHsl(hex) {
+  let h = String(hex).replace('#', '');
+  if (h.length === 3) h = h.split('').map(x => x + x).join('');
+  const r = parseInt(h.slice(0, 2), 16) / 255, g = parseInt(h.slice(2, 4), 16) / 255, b = parseInt(h.slice(4, 6), 16) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+  let H = 0, S = 0;
+  if (mx !== mn) {
+    const d = mx - mn;
+    S = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    H = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    H *= 60;
+  }
+  return [Math.round(H), Math.round(S * 100), Math.round(l * 100)];
+}
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+  const f = n => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)))).toString(16).padStart(2, '0');
+  return '#' + f(0) + f(8) + f(4);
+}
+
+// mode 'recolor' : change la couleur de la sélection au lieu d'un emplacement
+function buildColorPop(p, fam, slot, mode) {
   const colors = fam === 'hl' ? HL_COLORS : PEN_COLORS;
-  const cur = () => ed.tool === 'text' && fam === 'pen' ? curText().color : settings[fam].color;
+  const cur = () => mode === 'recolor' ? null : ed.tool === 'text' && fam === 'pen' ? curText().color : settings[fam].color;
+  const recent = (settings.recentColors || []).filter(c => RE_COLOR.test(c));
+  const start = cur() || colors[0];
+  const [h0, s0, l0] = hexToHsl(start);
+  p.style.width = '300px';
   p.innerHTML = `
-    <div class="pop-title">Couleur</div>
-    <div class="swatches">
-      ${colors.map(c => `<button class="swatch" data-c="${c}" style="background:${c}" title="${c}"></button>`).join('')}
-      <label class="swatch custom" title="Autre couleur">${icon('plus')}<input type="color" value="${cur()}"></label>
+    <div class="pop-title">${mode === 'recolor' ? 'Couleur de la sélection' : 'Couleur'}</div>
+    <div class="swatches">${colors.map(c => `<button class="swatch" data-c="${c}" style="background:${c}" title="${c}"></button>`).join('')}</div>
+    ${recent.length ? `<div class="pop-title">Récentes</div><div class="swatches">${recent.map(c => `<button class="swatch" data-c="${c}" style="background:${c}" title="${c}"></button>`).join('')}</div>` : ''}
+    <button class="pop-link cp-toggle">${icon('plus')}Couleur personnalisée</button>
+    <div class="cp" hidden>
+      <div class="cp-row"><span class="cp-prev"></span><input class="field cp-hex" maxlength="7" spellcheck="false" autocapitalize="off"></div>
+      <label class="cp-lbl">Teinte<input class="range cp-h" type="range" min="0" max="360" value="${h0}"></label>
+      <label class="cp-lbl">Saturation<input class="range cp-s" type="range" min="0" max="100" value="${s0}"></label>
+      <label class="cp-lbl">Luminosité<input class="range cp-l" type="range" min="0" max="100" value="${l0}"></label>
+      <button class="btn primary cp-use">Utiliser cette couleur</button>
     </div>`;
   const refresh = () => $$('.swatch[data-c]', p).forEach(b => b.classList.toggle('active', b.dataset.c === cur()));
-  const pick = c => {
+  const pick = (c, custom) => {
+    if (custom && !colors.includes(c)) {
+      settings.recentColors = [c, ...recent.filter(x => x !== c)].slice(0, 6);
+    }
+    if (mode === 'recolor') { if (ed.sel) recolorSelection(c); saveSettings(); closePop(); return; }
     settings[fam + 'Slots'][slot] = c; settings[fam].color = c;
     saveSettings(); updateToolbar(); refresh();
     if (ed.tool === 'text' && fam === 'pen') applyTextStyle({ color: c });
   };
-  p.addEventListener('click', e => { const sw = e.target.closest('[data-c]'); if (sw) pick(sw.dataset.c); });
-  $('input[type=color]', p).addEventListener('input', e => pick(e.target.value));
+  // réglage personnalisé
+  const H = $('.cp-h', p), S = $('.cp-s', p), L = $('.cp-l', p), hex = $('.cp-hex', p), prev = $('.cp-prev', p);
+  const fromSliders = () => { const c = hslToHex(+H.value, +S.value, +L.value); hex.value = c; prev.style.background = c; };
+  hex.addEventListener('input', () => {
+    const v = hex.value.trim();
+    if (/^#?[0-9a-f]{6}$/i.test(v)) {
+      const c = '#' + v.replace('#', '').toLowerCase(), [h, s, l] = hexToHsl(c);
+      H.value = h; S.value = s; L.value = l; prev.style.background = c;
+    }
+  });
+  [H, S, L].forEach(r => r.addEventListener('input', fromSliders));
+  fromSliders();
+  p.addEventListener('click', e => {
+    const sw = e.target.closest('[data-c]');
+    if (sw) { pick(sw.dataset.c, recent.includes(sw.dataset.c)); return; }
+    if (e.target.closest('.cp-toggle')) { $('.cp', p).hidden = !$('.cp', p).hidden; placePop(); return; }
+    if (e.target.closest('.cp-use')) pick(hslToHex(+H.value, +S.value, +L.value), true);
+  });
   refresh();
 }
 
@@ -1892,6 +2104,17 @@ function objSVG(o, dark) {
     const lh = o.fs * LH;
     return `<text font-family="${esc(FONT)}" font-size="${f(o.fs)}" font-weight="${o.bold ? 650 : 400}" fill="${safeColor(o.color)}" dominant-baseline="central" xml:space="preserve">`
       + layoutText(o).lines.map((l, i) => `<tspan x="${f(o.x)}" y="${f(o.y + lh * (i + 0.5))}">${esc(l)}</tspan>`).join('') + '</text>\n';
+  }
+  if (o.type === 'link' && o.pv) {
+    const k = chipColors(dark), h = o.h, pv = o.pv, img = safeThumb(pv.img);
+    const tx = o.x + (img ? h : 0) + 14;
+    let s = `<rect x="${f(o.x)}" y="${f(o.y)}" width="${f(o.w)}" height="${f(h)}" rx="12" fill="${k.bg}" stroke="${k.bd}"/>`;
+    if (img) s += `<image href="${img}" x="${f(o.x)}" y="${f(o.y)}" width="${f(h)}" height="${f(h)}" preserveAspectRatio="xMidYMid slice"/>`;
+    s += `<text x="${f(tx)}" y="${f(o.y + 24)}" font-family="${esc(FONT)}" font-size="12" fill="${k.mu}">${esc(pv.site || linkHost(o))}</text>`
+      + `<text x="${f(tx)}" y="${f(o.y + 46)}" font-family="${esc(FONT)}" font-size="15" font-weight="600" fill="${k.ac}">${esc(linkTitle(o).slice(0, 70))}</text>`;
+    if (pv.desc) s += `<text x="${f(tx)}" y="${f(o.y + 70)}" font-family="${esc(FONT)}" font-size="13" fill="${k.mu}">${esc(pv.desc.slice(0, 80))}</text>`;
+    const url = normUrl(o.url);
+    return (url ? `<a href="${esc(url)}">${s}</a>` : s) + '\n';
   }
   const k = chipColors(dark), h = o.h, title = o.type === 'link' ? linkTitle(o) : (o.name || 'Son'), sub = o.type === 'link' ? linkSub(o) : fmtDur(o.dur);
   let s = `<rect x="${f(o.x)}" y="${f(o.y)}" width="${f(o.w)}" height="${h}" rx="12" fill="${k.bg}" stroke="${k.bd}"/>`
@@ -2332,7 +2555,14 @@ function sanitizeNote(n) {
       if (typeof o.src === 'string' && RE_AUDIO.test(o.src)) objs.push({ ...base, h: CHIP_H, src: o.src, name: str(o.name, 200), dur: num(o.dur, 0, 86400, 0) });
     } else if (o.type === 'link') {
       const url = normUrl(o.url);
-      if (url) objs.push({ ...base, h: CHIP_H, url, label: str(o.label, 120) });
+      if (!url) continue;
+      const l = { ...base, h: CHIP_H, url, label: str(o.label, 120) };
+      const p = o.pv;
+      if (p && typeof p === 'object') {
+        l.pv = { title: cleanTxt(str(p.title, 200), 200), desc: cleanTxt(str(p.desc, 300), 300), site: cleanTxt(str(p.site, 80), 80), img: safeThumb(p.img) };
+        l.h = PREVIEW_H;
+      }
+      objs.push(l);
     }
   }
   return { meta, strokes, objs };

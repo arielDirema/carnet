@@ -398,3 +398,16 @@ button.pager-txt:hover { background: var(--surface-2); }
 @keyframes rec-blink { 50% { opacity: .25; } }
 .ln-err { color: var(--danger); font-size: 13.5px; margin-top: 8px; }
 .dialog .field + .nb-label { margin-top: 14px; }
+
+/* ---------- Palette de couleurs ---------- */
+.sb-pal { width: 38px; height: 40px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+.sb-pal:hover { background: var(--surface-2); color: var(--text); }
+.sb-pal svg.i { width: 21px; height: 21px; }
+.swatches + .pop-title { margin-top: 16px; }
+.cp-toggle { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; }
+.cp-toggle svg.i { width: 16px; height: 16px; }
+.cp { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.cp-row { display: flex; align-items: center; gap: 10px; }
+.cp-prev { width: 40px; height: 40px; border-radius: 10px; flex: none; box-shadow: inset 0 0 0 1px rgba(128,128,128,.35); }
+.cp-hex { flex: 1; font-family: ui-monospace, Consolas, monospace; text-transform: lowercase; }
+.cp-lbl { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--muted); }

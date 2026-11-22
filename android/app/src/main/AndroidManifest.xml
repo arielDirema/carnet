@@ -40,8 +40,8 @@
 
     <!-- Permissions -->
 
-    <!-- Appli 100 % hors ligne : pas d'accès Internet (retiré même s'il vient d'une bibliothèque) -->
-    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <!-- Internet : sert uniquement a recuperer l'apercu d'un lien au moment ou on l'insere -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Enregistrer des sons dans les notes -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
